@@ -258,7 +258,7 @@ create_databases() {
     log_info "Executing: node create-project-db.js $platform_name $project_name mysql"
     echo ""
 
-    MYSQL_RESULT=$(node "$CREATE_DB_SCRIPT" "$platform_name" "$project_name" mysql 2>&1)
+    MYSQL_RESULT=$(cd "$DEV_ROOT_PATH/_manager" && node "scripts/create-project-db.js" "$platform_name" "$project_name" mysql 2>&1)
     MYSQL_EXIT_CODE=$?
 
     # Display full output
@@ -289,7 +289,7 @@ create_databases() {
     log_info "Executing: node create-project-db.js $platform_name $project_name postgresql"
     echo ""
 
-    PG_RESULT=$(node "$CREATE_DB_SCRIPT" "$platform_name" "$project_name" postgresql 2>&1)
+    PG_RESULT=$(cd "$DEV_ROOT_PATH/_manager" && node "scripts/create-project-db.js" "$platform_name" "$project_name" postgresql 2>&1)
     PG_EXIT_CODE=$?
 
     # Display full output
@@ -423,14 +423,22 @@ calculate_ports() {
     FE_NEXTJS_PORT=$(echo "$port_info" | grep -A 2 '"feNextjs"' | grep '"port"' | grep -o '[0-9]*')
     FE_SVELTEKIT_PORT=$(echo "$port_info" | grep -A 2 '"feSveltekit"' | grep '"port"' | grep -o '[0-9]*')
 
+    # Calculate reserved ports based on base port + offset
+    API_RESERVED_PORT=$((BASE_PROJECT_PORT + 4))
+    FE_RESERVED_PORT=$((BASE_PROJECT_PORT + 7))
+    SYS_RESERVED_PORT=$((BASE_PROJECT_PORT + 8))
+
     # Export all ports
     export BASE_PROJECT_PORT
     export BE_NODEJS_PORT
     export BE_PYTHON_PORT
     export API_GRAPHQL_PORT
     export API_REST_PORT
+    export API_RESERVED_PORT
     export FE_NEXTJS_PORT
     export FE_SVELTEKIT_PORT
+    export FE_RESERVED_PORT
+    export SYS_RESERVED_PORT
 
     log_success "✅ Port assignments calculated successfully!"
     echo ""
@@ -520,6 +528,17 @@ substitute_template_variables() {
             sed -i "s|\${FE_NEXTJS_PORT}|$FE_NEXTJS_PORT|g" "$env_file"
             sed -i "s|\${FE_SVELTEKIT_PORT}|$FE_SVELTEKIT_PORT|g" "$env_file"
 
+            # Port variables (alias - for backward compatibility with ${PORT_1} format)
+            sed -i "s|\${PORT_1}|$BE_NODEJS_PORT|g" "$env_file"
+            sed -i "s|\${PORT_2}|$BE_PYTHON_PORT|g" "$env_file"
+            sed -i "s|\${PORT_3}|$API_GRAPHQL_PORT|g" "$env_file"
+            sed -i "s|\${PORT_4}|$API_REST_PORT|g" "$env_file"
+            sed -i "s|\${PORT_5}|$API_RESERVED_PORT|g" "$env_file"
+            sed -i "s|\${PORT_6}|$FE_NEXTJS_PORT|g" "$env_file"
+            sed -i "s|\${PORT_7}|$FE_SVELTEKIT_PORT|g" "$env_file"
+            sed -i "s|\${PORT_8}|$FE_RESERVED_PORT|g" "$env_file"
+            sed -i "s|\${PORT_9}|$SYS_RESERVED_PORT|g" "$env_file"
+
             log_success "  ✓ $file_desc configured"
         fi
     }
@@ -533,16 +552,34 @@ substitute_template_variables() {
 
     # 다른 파일들의 변수 치환
     log_info "  Updating project metadata..."
-    find "$project_path" -type f \( -name "*.json" -o -name "*.ts" -o -name "*.js" -o -name "*.md" \) -exec sed -i "s/{projectName}/$project_name/g" {} \;
-    find "$project_path" -type f \( -name "*.json" -o -name "*.ts" -o -name "*.js" -o -name "*.md" \) -exec sed -i "s/{projectDescription}/$PROJECT_DESCRIPTION/g" {} \;
-    find "$project_path" -type f \( -name "*.json" -o -name "*.ts" -o -name "*.js" -o -name "*.md" \) -exec sed -i "s/{githubUser}/$GITHUB_USER/g" {} \;
+    find "$project_path" -type f \( -name "*.json" -o -name "*.ts" -o -name "*.js" -o -name "*.md" \) -exec sed -i "s|{projectName}|$project_name|g" {} \;
+    find "$project_path" -type f \( -name "*.json" -o -name "*.ts" -o -name "*.js" -o -name "*.md" \) -exec sed -i "s|{projectDescription}|$PROJECT_DESCRIPTION|g" {} \;
+    find "$project_path" -type f \( -name "*.json" -o -name "*.ts" -o -name "*.js" -o -name "*.md" \) -exec sed -i "s|{githubUser}|$GITHUB_USER|g" {} \;
     log_success "  ✓ Metadata updated"
+    echo ""
+
+    # Substitute {{...}} template variables
+    log_info "  Substituting template placeholders..."
+
+    # Substitute {{PROJECT_NAME}} and {{PROJECT_DESCRIPTION}}
+    find "$project_path" -type f \( -name "*.json" -o -name "*.ts" -o -name "*.js" -o -name "*.md" \) -exec sed -i "s|{{PROJECT_NAME}}|$project_name|g" {} \;
+    find "$project_path" -type f \( -name "*.json" -o -name "*.ts" -o -name "*.js" -o -name "*.md" \) -exec sed -i "s|{{PROJECT_DESCRIPTION}}|$PROJECT_DESCRIPTION|g" {} \;
+
+    # Substitute port variables in package.json and other files
+    find "$project_path" -type f \( -name "*.json" -o -name "*.ts" -o -name "*.js" -o -name "*.md" \) -exec sed -i "s/{{FE_NEXTJS_PORT}}/$FE_NEXTJS_PORT/g" {} \;
+    find "$project_path" -type f \( -name "*.json" -o -name "*.ts" -o -name "*.js" -o -name "*.md" \) -exec sed -i "s/{{BE_NODEJS_PORT}}/$BE_NODEJS_PORT/g" {} \;
+    find "$project_path" -type f \( -name "*.json" -o -name "*.ts" -o -name "*.js" -o -name "*.md" \) -exec sed -i "s/{{BE_PYTHON_PORT}}/$BE_PYTHON_PORT/g" {} \;
+    find "$project_path" -type f \( -name "*.json" -o -name "*.ts" -o -name "*.js" -o -name "*.md" \) -exec sed -i "s/{{API_GRAPHQL_PORT}}/$API_GRAPHQL_PORT/g" {} \;
+    find "$project_path" -type f \( -name "*.json" -o -name "*.ts" -o -name "*.js" -o -name "*.md" \) -exec sed -i "s/{{API_REST_PORT}}/$API_REST_PORT/g" {} \;
+    find "$project_path" -type f \( -name "*.json" -o -name "*.ts" -o -name "*.js" -o -name "*.md" \) -exec sed -i "s/{{FE_SVELTEKIT_PORT}}/$FE_SVELTEKIT_PORT/g" {} \;
+
+    log_success "  ✓ Template placeholders substituted"
     echo ""
 
     # 날짜 변수 치환
     log_info "  Setting current date..."
     local current_date=$(date +%Y-%m-%d)
-    find "$project_path" -type f -name "*.md" -exec sed -i "s/{currentDate}/$current_date/g" {} \;
+    find "$project_path" -type f -name "*.md" -exec sed -i "s|{currentDate}|$current_date|g" {} \;
     log_success "  ✓ Date set to $current_date"
 
     echo ""
@@ -708,12 +745,49 @@ log_info "=========================================="
 substitute_template_variables "$PROJECT_NAME" "$TARGET_LOCATION"
 create_gitignore "$PROJECT_NAME" "$TARGET_LOCATION"
 
+echo ""
+log_info "=========================================="
+log_info "📦 STEP 5: Installing Dependencies"
+log_info "=========================================="
+
+PROJECT_PATH="$TARGET_LOCATION/$PROJECT_NAME"
+
+# Install backend dependencies
+if [ -d "$PROJECT_PATH/backend/nodejs" ]; then
+    log_info "Installing backend (Node.js) dependencies..."
+    cd "$PROJECT_PATH/backend/nodejs" && npm install
+    if [ $? -eq 0 ]; then
+        log_success "✅ Backend dependencies installed successfully!"
+    else
+        log_warning "⚠️  Backend dependency installation failed (continuing)"
+    fi
+    cd - > /dev/null
+else
+    log_warning "⚠️  Backend directory not found, skipping backend npm install"
+fi
+
+echo ""
+
+# Install frontend dependencies
+if [ -d "$PROJECT_PATH/frontend/nextjs" ]; then
+    log_info "Installing frontend (Next.js) dependencies..."
+    cd "$PROJECT_PATH/frontend/nextjs" && npm install
+    if [ $? -eq 0 ]; then
+        log_success "✅ Frontend dependencies installed successfully!"
+    else
+        log_warning "⚠️  Frontend dependency installation failed (continuing)"
+    fi
+    cd - > /dev/null
+else
+    log_warning "⚠️  Frontend directory not found, skipping frontend npm install"
+fi
+
 # Git 저장소 생성 (xgit 사용)
 REPO_LOCAL_PATH="platforms/$PLATFORM_NAME/projects/$PROJECT_NAME"
 
 echo ""
 log_info "=========================================="
-log_info "📦 STEP 5: Git Repository Setup"
+log_info "📦 STEP 6: Git Repository Setup"
 log_info "=========================================="
 
 if [ "$GIT_ENABLED" = "true" ]; then
@@ -739,7 +813,7 @@ fi
 
 echo ""
 log_info "=========================================="
-log_info "📝 STEP 6: Updating Project Registry"
+log_info "📝 STEP 7: Updating Project Registry"
 log_info "=========================================="
 update_projects_json "$PROJECT_NAME" "$PLATFORM_NAME" "$PROJECT_DESCRIPTION" "$GITHUB_USER" "development"
 log_success "✅ Project registered in projects.json"
