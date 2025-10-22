@@ -1,8 +1,8 @@
 version: "3.8"
 
 services:
-  ubuntu-ilmac:
-    container_name: ubuntu-ilmac
+  ubuntu-test:
+    container_name: ubuntu-test
     image: ubuntu-n8n:latest
     restart: unless-stopped
     ports:
